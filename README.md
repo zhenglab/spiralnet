@@ -1,8 +1,8 @@
-# spiralnet
+# SpiralNet
 
 This repository provides the official PyTorch implementation of our paper "Spiral Generative Network for Image Extrapolation".
 
-For the open source code can be found: https://github.com/zhenglab/spiralnet
+Our paper can be found in https://link.springer.com/chapter/10.1007/978-3-030-58529-7_41.
 
 
 ## Prerequisites
@@ -68,10 +68,11 @@ For example: python test.py --path=./checkpoints/SliceGAN/celeba/
 
 ## Citing
 ```
-@inproceedings{Guo_2020_ECCV,
+@inproceedings{guo2020spiralnet,
 author = {Guo, Dongsheng and Liu, Hongzhi and Zhao, Haoru and Cheng, Yunhao and Song, Qingwei and Gu, Zhaorui and Zheng, Haiyong and Zheng, Bing},
 title = {Spiral Generative Network for Image Extrapolation},
 booktitle = {The European Conference on Computer Vision (ECCV)},
+pages={701--717},
 year = {2020}
 } 
 
