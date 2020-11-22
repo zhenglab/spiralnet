@@ -1,0 +1,36 @@
+MODE: 1             # 1: train, 2: test, 3: eval
+SEED: 10            # random seed
+GPU: [0]            # list of gpu ids
+MODEL: 1            # 1: ImagineGAN, 2: Slice
+DATATYPE: 1         # 1: objects, 2:scenes
+
+TRAIN_FLIST: ./datasets/Celeba-HQ/train.flist
+VAL_FLIST: ./datasets/Celeba-HQ/val.flist
+MASK_FLIST: ./datasets/Celeba-HQ/mask.flist
+
+
+G_LR: 5e-5                    # Generator learning rate
+D_LR: 2e-4                    # Discriminator learning rate
+BETA1: 0.0                    # adam optimizer beta1
+BETA2: 0.999                  # adam optimizer beta2
+BATCH_SIZE: 25                # input batch size for training
+INPUT_SIZE: 256               # input image size for training 0 for original size
+SLICE: 32
+
+MAX_ITERS: 800000             # maximum number of iterations to train the model
+CENTER: 0                     # random crop or center crop / 0 or 1
+CATMASK: True                 # cat mask or nor / True or False
+
+G1_ADV_LOSS_WEIGHT: 0.1
+G1_CONTENT_LOSS_WEIGHT: 1
+G1_COLOR_LOSS_WEIGHT: 10
+
+G2_ADV_LOSS_WEIGHT: 0.1
+G2_L1_LOSS_WEIGHT: 10
+G2_STYLE_LOSS_WEIGHT: 250
+G2_CO_LOSS_WEIGHT: 1
+G2_MRF_LOSS_WEIGHT: 0.05
+
+INTERVAL: 100
+SAMPLE_SIZE: 5               # number of images to sample
+
