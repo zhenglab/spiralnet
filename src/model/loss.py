@@ -42,31 +42,6 @@ class AdversarialLoss(nn.Module):
             loss = self.criterion(outputs, labels)
             return loss
 
-        
-def cal_gradient_penalty(netD, real_data, fake_data, device, type='mixed', constant=1.0, lambda_gp=10.0):
-    if lambda_gp > 0.0:
-        if type == 'real':
-            interpolatesv = real_data
-        elif type == 'fake':
-            interpolatesv = fake_data
-        elif type == 'mixed':
-            alpha = torch.rand(real_data.shape[0], 1)
-            alpha = alpha.expand(real_data.shape[0], real_data.nelement() // real_data.shape[0]).contiguous().view(*real_data.shape)
-            alpha = alpha.to(device)
-            interpolatesv = alpha * real_data + ((1 - alpha) * fake_data)
-        else:
-            raise NotImplementedError('{} not implemented'.format(type))
-        interpolatesv.requires_grad_(True)
-        disc_interpolates = netD(interpolatesv)
-        gradients = torch.autograd.grad(outputs=disc_interpolates, inputs=interpolatesv,
-                                        grad_outputs=torch.ones(disc_interpolates.size()).to(device),
-                                        create_graph=True, retain_graph=True, only_inputs=True)
-        gradients = gradients[0].view(real_data.size(0), -1)
-        gradient_penalty = (((gradients + 1e-16).norm(2, dim=1) - constant) ** 2).mean() * lambda_gp        # added eps
-        return gradient_penalty, gradients
-    else:
-        return 0.0, None
-
 
 class StyleLoss(nn.Module):
     def __init__(self, vgg19):
@@ -112,37 +87,6 @@ class StyleLoss(nn.Module):
         self.cs_NCHW = self.sum_normalize(dist_before_norm)
         return self.cs_NCHW
 
-    def mrf_loss(self, gen, tar):
-        meanT = torch.mean(tar, 1, keepdim=True)
-        gen_feats, tar_feats = gen - meanT, tar - meanT
-
-        gen_feats_norm = torch.norm(gen_feats, p=2, dim=1, keepdim=True)
-        tar_feats_norm = torch.norm(tar_feats, p=2, dim=1, keepdim=True)
-
-        gen_normalized = gen_feats / gen_feats_norm
-        tar_normalized = tar_feats / tar_feats_norm
-
-        cosine_dist_l = []
-        BatchSize = tar.size(0)
-
-        for i in range(BatchSize):
-            tar_feat_i = tar_normalized[i:i+1, :, :, :]
-            gen_feat_i = gen_normalized[i:i+1, :, :, :]
-            patches_OIHW = self.patch_extraction(tar_feat_i)
-
-            cosine_dist_i = F.conv2d(gen_feat_i, patches_OIHW)
-            cosine_dist_l.append(cosine_dist_i)
-        cosine_dist = torch.cat(cosine_dist_l, dim=0)
-        cosine_dist_zero_2_one = - (cosine_dist - 1) / 2
-        relative_dist = self.compute_relative_distances(cosine_dist_zero_2_one)
-        rela_dist = self.exp_norm_relative_dist(relative_dist)
-        dims_div_mrf = rela_dist.size()
-        k_max_nc = torch.max(rela_dist.view(dims_div_mrf[0], dims_div_mrf[1], -1), dim=2)[0]
-        div_mrf = torch.mean(k_max_nc, dim=1)
-        div_mrf_sum = -torch.log(div_mrf)
-        div_mrf_sum = torch.sum(div_mrf_sum)
-        return div_mrf_sum
-
     def __call__(self, x, y):
         x_vgg, y_vgg = self.vgg(x), self.vgg(y)
         style_loss = 0.0
@@ -150,36 +94,9 @@ class StyleLoss(nn.Module):
         style_loss += self.criterion(self.compute_gram(x_vgg['relu3_4']), self.compute_gram(y_vgg['relu3_4']))
         style_loss += self.criterion(self.compute_gram(x_vgg['relu4_4']), self.compute_gram(y_vgg['relu4_4']))
         style_loss += self.criterion(self.compute_gram(x_vgg['relu5_2']), self.compute_gram(y_vgg['relu5_2']))
-        
-        mrf_loss = 0.0
-        mrf_loss += self.mrf_loss(x_vgg['relu3_2'], y_vgg['relu3_2'])
-        mrf_loss += self.mrf_loss(x_vgg['relu4_2'], y_vgg['relu4_2']) * 2
-
-        return style_loss, mrf_loss 
-    
-
-class StyleLoss_v2(nn.Module):
-
-    def __init__(self, vgg19):
-        super(StyleLoss_v2, self).__init__()
-        self.add_module('vgg', FeatureExtractor(vgg19, ['8', '17', '26', '31']))
-        self.criterion = torch.nn.L1Loss()
-
-    def compute_gram(self, x):
-        b, ch, h, w = x.size()
-        f = x.view(b, ch, w * h)
-        f_T = f.transpose(1, 2)
-        G = f.bmm(f_T) / (h * w * ch)
-
-        return G
-
-    def __call__(self, x, y):
-        x_vgg, y_vgg = self.vgg(x), self.vgg(y)
-        style_loss = 0.0
-        for i in range(4):
-            style_loss += self.criterion(self.compute_gram(x_vgg[i]), self.compute_gram(y_vgg[i]))
 
         return style_loss
+
 
     
 class FeatureExtractor(nn.Module):
@@ -211,23 +128,6 @@ class ColorLoss(nn.Module):
         
         return color_loss
     
-class PerceptualLoss_v2(nn.Module):
-
-    def __init__(self, vgg19, weights=[1.0, 1.0, 1.0, 1.0]):
-        super(PerceptualLoss_v2, self).__init__()
-        self.add_module('vgg', FeatureExtractor(vgg19, ['1', '6', '11', '20', '29']))
-        self.criterion = torch.nn.L1Loss()
-        self.weights = weights
-
-    def __call__(self, x, y):
-        x_vgg, y_vgg = self.vgg(x), self.vgg(y)
-
-        content_loss = 0.0
-        for i in range(len(self.weights)):
-            content_loss += self.weights[i] * self.criterion(x_vgg[i], y_vgg[i])
-
-        return content_loss
-    
 
 class PerceptualLoss(nn.Module):
     def __init__(self, vgg19, weights=[1.0, 1.0, 1.0, 1.0, 1.0]):
@@ -251,70 +151,6 @@ class PerceptualLoss(nn.Module):
         class_loss = self.criterion(x_vgg['linear_3'], y_vgg['linear_3'])
 
         return content_loss, class_loss
-    
-class SceneLoss(nn.Module):
-    def __init__(self, net, weights=[1.0, 1.0, 1.0, 1.0, 1.0]):
-        super(SceneLoss, self).__init__()
-        self.add_module('net', net)
-        self.criterion = torch.nn.L1Loss()
-        self.weights = weights
-        
-    def __call__(self, x, y):
-        x_net, y_net = self.net(x), self.net(y)
-        
-        scene_loss = 0.0
-        for i in range(len(self.weights)):
-            scene_loss += self.weights[i] * self.criterion(x_net[i], y_net[i])
-        
-        return scene_loss
-
-    
-class TVLoss(nn.Module):
-    def __init__(self):
-        super(TVLoss, self).__init__()
-
-    def forward(self, x):
-        batch_size = x.size()[0]
-        h_x = x.size()[2]
-        w_x = x.size()[3]
-        count_h = self._tensor_size(x[:, :, 1:, :])
-        count_w = self._tensor_size(x[:, :, :, 1:])
-        h_tv = torch.pow((x[:, :, 1:, :]-x[:, :, :h_x-1, :]), 2).sum()
-        w_tv = torch.pow((x[:, :, : , 1:]-x[:, :, :, :w_x-1]),2).sum()
-        return 2 * (h_tv / count_h + w_tv / count_w) / batch_size
-
-    def _tensor_size(self,t):
-        return t.size()[1] * t.size()[2] * t.size()[3]
-    
-class ClassLoss(nn.Module):
-    def __init__(self):
-        super(ClassLoss, self).__init__()
-    
-    def forward(self, x, y):
-        vgg19 = models.vgg19(pretrained=True).cuda()
-        x = F.interpolate(x, 224)
-        y = F.interpolate(y, 224)
-        x_, y_ = vgg19(x), vgg19(y).detach()
-        criterion = nn.L1Loss()
-        loss = criterion(x_, y_)
-        return loss
-        
-    
-class IDMRFLoss(nn.Module):
-
-    def __init__(self, weights=[1.0, 1.0]):
-        super(IDMRFLoss, self).__init__()
-        self.add_module('vgg', VGG19())
-        self.criterion = torch.nn.L1Loss()
-        self.weights = weights
-
-    def __call__(self, x, y):
-        x_vgg, y_vgg = self.vgg(x), self.vgg(y)
-        idmrf_loss = 0.0
-        idmrf_loss += self.weights[0] * self.criterion(x_vgg['relu3_2'], y_vgg['relu3_2'])
-        idmrf_loss += self.weights[1] * self.criterion(x_vgg['relu4_2'], y_vgg['relu4_2'])
-
-        return idmrf_loss
 
 
 class VGG19(torch.nn.Module):

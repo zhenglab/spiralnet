@@ -7,7 +7,7 @@ import argparse
 from shutil import copyfile
 from src.config import Config
 from src.ImagineGAN import ImagineGAN
-from src.Slice import Slice
+from src.SliceGAN import SliceGAN
 
 
 def main(mode=None):
@@ -23,7 +23,6 @@ def main(mode=None):
         config.DEVICE = torch.device("cpu")
 
     cv2.setNumThreads(0)
-
     torch.manual_seed(config.SEED)
     torch.cuda.manual_seed(config.SEED)
     np.random.seed(config.SEED)
@@ -32,7 +31,7 @@ def main(mode=None):
     if config.MODEL == 1:
         model = ImagineGAN(config)
     if config.MODEL == 2:
-        model = Slice(config)        
+        model = SliceGAN(config)        
     model.load()
 
 

@@ -6,8 +6,8 @@ import torch.distributions as tdist
 import torchvision.models as models
 import imp
 import numpy as np
-from .networks import Dis_Imagine, ImagineNet, Outpad, D, PatchD, DenseD
-from .loss import ColorLoss, PerceptualLoss, StyleLoss, AdversarialLoss, VGG19, cal_gradient_penalty, SceneLoss
+from .networks import Dis_Imagine, ImagineNet, SpiralNet, D, PatchD, DenseD
+from .loss import ColorLoss, PerceptualLoss, StyleLoss, AdversarialLoss, VGG19
 from ..utils import template_match, Adam16
 
 
@@ -173,7 +173,7 @@ class SliceModel(BaseModel):
         else:
             self.out_size = (512,256)
         self.each = config.SLICE
-        g = Outpad(out_size=self.out_size, device=config.DEVICE, each=self.each)
+        g = SpiralNet(out_size=self.out_size, device=config.DEVICE, each=self.each)
         d = DenseD()
         patch_d = PatchD(in_channels=3)
         vgg19 = VGG19(2)
@@ -270,8 +270,8 @@ class SliceModel(BaseModel):
         g_adv_loss = g_l_loss
         g_loss += g_adv_loss
 
-        g_style_loss, g_mrf_loss = self.style_loss(o, data)
-        g_loss += g_mrf_loss * self.config.G2_MRF_LOSS_WEIGHT
+        g_style_loss = self.style_loss(o, data)
+        g_loss += g_style_loss * self.config.G2_STYLE_LOSS_WEIGHT
 
         logs = [
             ("l_d", d_loss.item()),
@@ -280,7 +280,7 @@ class SliceModel(BaseModel):
             ("l_gg_adv", g_g_loss.item()),
             ("l_gl_adv", g_l_loss.item()),
             ("l_g_adv", g_adv_loss.item()),
-            ("l_g_mrf", g_mrf_loss.item()),
+            ("l_g_style", g_style_loss.item()),
             ("l_g_l1", g_l1_loss.item()),
             ("l_g_col", g_color_loss.item())
         ]

@@ -1,7 +1,7 @@
 MODE: 1             # 1: train, 2: test, 3: eval
 SEED: 10            # random seed
 GPU: [0]            # list of gpu ids
-MODEL: 2            # 1: ImagineGAN, 2: Slice
+MODEL: 2            # 1: ImagineGAN, 2: SliceGAN
 DATATYPE: 1         # 1: objects, 2:scenes
 
 TRAIN_FLIST: ./datasets/Celeba-HQ/train.flist
@@ -29,7 +29,6 @@ G2_ADV_LOSS_WEIGHT: 0.1
 G2_L1_LOSS_WEIGHT: 10
 G2_STYLE_LOSS_WEIGHT: 250
 G2_CO_LOSS_WEIGHT: 1
-G2_MRF_LOSS_WEIGHT: 0.05
 
 INTERVAL: 100
 SAMPLE_SIZE: 5               # number of images to sample

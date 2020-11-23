@@ -115,9 +115,9 @@ class ImagineNet(BaseNetwork):
         return x
 
 
-class AN(nn.Module):
+class SPADE(nn.Module):
     def __init__(self, norm_nc, label_nc):
-        super(AN, self).__init__()
+        super(SPADE, self).__init__()
         self.batch_norm = nn.InstanceNorm2d(norm_nc, affine=False)
         self.conv = spectral_norm(nn.Conv2d(norm_nc, norm_nc, kernel_size=3, padding=1))
 
@@ -232,8 +232,8 @@ class Gen(nn.Module):
             nn.Tanh(),
         )
 
-        self.up_1 = AN(4 * 64, 3)
-        self.up_2 = AN(2 * 64, 3)
+        self.up_1 = SPADE(4 * 64, 3)
+        self.up_2 = SPADE(2 * 64, 3)
 
     def calc_mean_std(self, feat, eps=1e-5):
         # eps is a small value added to the variance to avoid divide-by-zero.
@@ -245,7 +245,7 @@ class Gen(nn.Module):
         feat_mean = feat.view(N, C, -1).mean(dim=2).view(N, C, 1, 1)
         return feat_mean, feat_std
 
-    def adaptive_instance_normalization(self, content_feat, style_feat):
+    def AdaIN(self, content_feat, style_feat):
         assert (content_feat.size()[:2] == style_feat.size()[:2])
         size = content_feat.size()
         style_mean, style_std = self.calc_mean_std(style_feat)
@@ -271,7 +271,7 @@ class Gen(nn.Module):
         s_vgg = self.vgg_layer(s)
         s_in = s_vgg['relu3_4']
 
-        x = self.adaptive_instance_normalization(c1_in, s_in)
+        x = self.AdaIN(c1_in, s_in)
         x = self.resblock(x)
 
         x1 = self.up_1(x, pres)
@@ -284,10 +284,9 @@ class Gen(nn.Module):
         return x
 
 
-class Outpad(BaseNetwork):
-    # position => tuple((x1, y1), (x2, y2))
+class SpiralNet(BaseNetwork):
     def __init__(self, out_size, device, ks=3, each=16):
-        super(Outpad, self).__init__()
+        super(SpiralNet, self).__init__()
 
         self.ks, self.out_size, self.device, self.each = ks, out_size, device, each
 
@@ -318,7 +317,7 @@ class Outpad(BaseNetwork):
             slice_in = torch.cat((x, crop_sf), dim=2)
             return crop_sf
 
-    def crop_1(self, x, direct):
+    def sliceOperator_1(self, x, direct):
         # direct => l/u/r/d: 0,1,2,3
         h, w = x.shape[2], x.shape[3]
         if direct == 0:
@@ -330,7 +329,7 @@ class Outpad(BaseNetwork):
         if direct == 3:
             return x[:, :, -self.each:, :]
 
-    def joint_1(self, x, direct, conv_data, loc):
+    def extrapolateOperator(self, x, direct, conv_data, loc):
         cat_edge = self.each
         if direct == 0:
             if loc < self.each:
@@ -351,7 +350,7 @@ class Outpad(BaseNetwork):
 
         return x
 
-    def crop_from(self, x, direct, gt, coord):
+    def sliceOperator_from(self, x, direct, gt, coord):
         h, w = x.shape[2], x.shape[3]
         x1, y1, x2, y2 = coord[0], coord[1], coord[2], coord[3]
         if direct == 0:
@@ -363,8 +362,7 @@ class Outpad(BaseNetwork):
         if direct == 3:
             return gt[:, :, y2 - self.each:y2, x1:x1 + w]
 
-    def slicegen(self, stg, coord, inits, subimage, fm, each, direct=0, post_train=False):
-
+    def sliceGenerator(self, stg, coord, inits, subimage, fm, each, direct=0, post_train=False):
         iner = subimage
         if direct == 0:
             if coord[0] > 0:
@@ -373,20 +371,18 @@ class Outpad(BaseNetwork):
                 coord[0] = coord[0] if coord[0] > 0 else 0
                 dir = [1, 0, 0, 0]
                 stg = stg + dir
-                c_left = self.crop_1(iner, direct)
+                c_left = self.sliceOperator_1(iner, direct)
                 if not post_train:
-                    styslice = self.crop_from(c_left, direct, gt, coord)
+                    styslice = self.sliceOperator_from(c_left, direct, gt, coord)
                 else:
-                    styslice = self.crop_1(c_left, direct)
+                    styslice = self.sliceOperator_1(c_left, direct)
                 slice_in = self.cat_sf(c_left, fm, (coord[0], coord[1]), direct)
                 l = self.G(slice_in, styslice, inits, stg)
-                iner = self.joint_1(iner, direct, l, loc_x1)
-
+                iner = self.extrapolateOperator(iner, direct, l, loc_x1)
                 return iner, coord[0], coord[1]
 
             else:
                 return iner, coord[0], coord[1]
-
 
         elif direct == 1:
             if coord[1] > 0:
@@ -395,19 +391,17 @@ class Outpad(BaseNetwork):
                 coord[1] = coord[1] if coord[1] > 0 else 0
                 dir = [0, 1, 0, 0]
                 stg = stg + dir
-                c_up = self.crop_1(iner, direct)
+                c_up = self.sliceOperator_1(iner, direct)
                 if not post_train:
-                    styslice = self.crop_from(c_up, direct, gt, coord)
+                    styslice = self.sliceOperator_from(c_up, direct, gt, coord)
                 else:
-                    styslice = self.crop_1(c_up, direct)
+                    styslice = self.sliceOperator_1(c_up, direct)
                 slice_in = self.cat_sf(c_up, fm, (coord[0], coord[1]), direct)
                 u = self.G(slice_in, styslice, inits, stg)
-                iner = self.joint_1(iner, direct, u, loc_y1)
+                iner = self.extrapolateOperator(iner, direct, u, loc_y1)
                 return iner, coord[0], coord[1]
-
             else:
                 return iner, coord[0], coord[1]
-
 
         elif direct == 2:
             if coord[2] < self.wmax:
@@ -416,86 +410,36 @@ class Outpad(BaseNetwork):
                 coord[2] = coord[2] if coord[2] < self.wmax else self.wmax
                 dir = [0, 0, 1, 0]
                 stg = stg + dir
-                c_right = self.crop_1(iner, direct)
+                c_right = self.sliceOperator_1(iner, direct)
                 if not post_train:
-                    styslice = self.crop_from(c_right, direct, gt, coord)
+                    styslice = self.sliceOperator_from(c_right, direct, gt, coord)
                 else:
-                    styslice = self.crop_1(c_right, direct)
-
+                    styslice = self.sliceOperator_1(c_right, direct)
                 slice_in = self.cat_sf(c_right, fm, (coord[2], coord[3]), direct)
                 r = self.G(slice_in, styslice, inits, stg)
-                iner = self.joint_1(iner, direct, r, loc_x2)
+                iner = self.extrapolateOperator(iner, direct, r, loc_x2)
                 return iner, coord[2], coord[3]
             else:
                 return iner, coord[2], coord[3]
-
 
         elif direct == 3:
             if coord[3] < self.hmax:
                 loc_y2 = coord[3]
                 coord[3] += each
                 coord[3] = coord[3] if coord[3] < self.hmax else self.hmax
-
                 dir = [0, 0, 0, 1]
                 stg = stg + dir
-
-                c_down = self.crop_1(iner, direct)
+                c_down = self.sliceOperator_1(iner, direct)
                 if not post_train:
-                    styslice = self.crop_from(c_down, direct, gt, coord)
+                    styslice = self.sliceOperator_from(c_down, direct, gt, coord)
                 else:
-                    styslice = self.crop_1(c_down, direct)
-
+                    styslice = self.sliceOperator_1(c_down, direct)
                 slice_in = self.cat_sf(c_down, fm, (coord[2], coord[3]), direct)
                 d = self.G(slice_in, styslice, inits, stg)
-                iner = self.joint_1(iner, direct, d, loc_y2)
-
+                iner = self.extrapolateOperator(iner, direct, d, loc_y2)
                 return iner, coord[2], coord[3]
-
             else:
                 return iner, coord[2], coord[3]
-
-    def coord_matrix(self, fm, stage, position):
-        x_range, y_range = fm.shape[3], fm.shape[2]
-        x1, y1, x2, y2 = position[0][0].item(), position[0][1].item(), position[1][0].item(), position[1][1].item()
-        coord_mat = []
-
-        for st in range(int(stage)):
-            coord_mat_in = []
-            if x1 > 0:
-                loc_x1 = x1
-                x1 -= self.each
-                x1 = x1 if x1 > 0 else 0
-                coord_mat_in.append((x1, y1, loc_x1, y2))
-            elif x1 == 0:
-                coord_mat_in.append(0)
-
-            if y1 > 0:
-                loc_y1 = y1
-                y1 -= self.each
-                y1 = y1 if y1 > 0 else 0
-                coord_mat_in.append((x1, y1, x2, loc_y1))
-            elif y1 == 0:
-                coord_mat_in.append(0)
-
-            if x2 < x_range:
-                loc_x2 = x2
-                x2 += self.each
-                x2 = x2 if x2 < x_range else x_range
-                coord_mat_in.append((loc_x2, y1, x2, y2))
-            elif x2 == 256:
-                coord_mat_in.append(256)
-
-            if y2 < y_range:
-                loc_y2 = y2
-                y2 += self.each
-                y2 = y2 if y2 < y_range else y_range
-                coord_mat_in.append((x1, loc_y2, x2, y2))
-            elif y2 == 256:
-                coord_mat_in.append(256)
-
-            coord_mat.append(coord_mat_in)
-
-        return coord_mat
 
     def forward(self, x, gt, fm, position, stage, post_train=False):
         x1, y1, x2, y2 = position[0][0].item(), position[0][1].item(), position[1][0].item(), position[1][1].item()
@@ -506,16 +450,16 @@ class Outpad(BaseNetwork):
         for st in range(int(stage)):
             gen = x
             stg = [0, 0, 0, 0]
-            gen, x1, y1 = self.slicegen(stg, [x1, y1, x2, y2], inits, gen, fm, self.each, direct=0,
+            gen, x1, y1 = self.sliceGenerator(stg, [x1, y1, x2, y2], inits, gen, fm, self.each, direct=0,
                                         post_train=post_train)
             coord_all.append([x1, y1, x2, y2])
-            gen, x1, y1 = self.slicegen(stg, [x1, y1, x2, y2], inits, gen, fm, self.each, direct=1,
+            gen, x1, y1 = self.sliceGenerator(stg, [x1, y1, x2, y2], inits, gen, fm, self.each, direct=1,
                                         post_train=post_train)
             coord_all.append([x1, y1, x2, y2])
-            gen, x2, y2 = self.slicegen(stg, [x1, y1, x2, y2], inits, gen, fm, self.each, direct=2,
+            gen, x2, y2 = self.sliceGenerator(stg, [x1, y1, x2, y2], inits, gen, fm, self.each, direct=2,
                                         post_train=post_train)
             coord_all.append([x1, y1, x2, y2])
-            gen, x2, y2 = self.slicegen(stg, [x1, y1, x2, y2], inits, gen, fm, self.each, direct=3,
+            gen, x2, y2 = self.sliceGenerator(stg, [x1, y1, x2, y2], inits, gen, fm, self.each, direct=3,
                                         post_train=post_train)
             coord_all.append([x1, y1, x2, y2])
 
@@ -630,24 +574,6 @@ class PatchD(BaseNetwork):
         aux = self.aux_module(self.stage, self.direction, inp, aux_in)
 
         return outputs, aux
-
-
-class SpatialPredictorBuilder(nn.Module):
-    def __init__(self, config):
-        super(SpatialPredictorBuilder, self).__init__()
-        self.config = config
-
-        self.fc1 = nn.Linear(512, self.aux_dim)
-        self.bn1 = nn.BatchNorm1d(1, eps=1e-05, momentum=0.9)
-        self.fc2 = nn.Linear(self.aux_dim, self.spatial_dim)
-        self.lrelu = nn.LeakyReLU(0.2, inplace=True)
-
-    def forward(self, h, is_training):
-        h = self.fc1(h)
-        h = self.bn1(h)
-        h = self.lrelu(h)
-        h = self.fc2(h)
-        return torch.tanh(h)
 
 
 class Dis_Imagine(BaseNetwork):

@@ -22,7 +22,7 @@ from skimage.measure import compare_psnr
 from skimage.color import rgb2gray
 
 
-class Slice():
+class SliceGAN():
     def __init__(self, config):
         self.config = config
 
@@ -230,12 +230,10 @@ class Slice():
             if self.config.DATATYPE == 1:
                 up = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=False)
                 pos = pos[0]
-                print("pos: ", pos)
                 position = (pos, (pos[0] + 128, pos[1] + 128))
             if self.config.DATATYPE == 2:
                 up = nn.Upsample(size=(256, 512), mode='bilinear', align_corners=False)
                 pos = pos[0]
-                print("pos: ", pos)
                 position = (pos, (pos[0] + 256, pos[1] + 256))
 
             sf_data = up(sf_data)
@@ -246,12 +244,9 @@ class Slice():
 
             _pos = _pos[0]
             _pos = torch.IntTensor(_pos).cuda()
-            print("_pos: ",_pos)
             _position = (_pos, (_pos[0]+128, _pos[1]+128))
-     
             o_2, _ = self.Model(fullpdata, data, sf_data, _position, self.stage, post_train=True)
             final_2 = o_2
-
             pdata = self.postprocess(pdata)[0]
             mask = self.postprocess(mask)[0]
             o_1 = self.postprocess(sf_data)[0]
@@ -265,8 +260,6 @@ class Slice():
             imsave(_o_1s.int(), os.path.join(state_rec_results, name))
             imsave(final, os.path.join(final_results, name))
             imsave(final_2, os.path.join(unknown_final_results, name))
-
-            print(index, name)
 
         print("start compute metric")
 
