@@ -47,7 +47,7 @@ For example: python test.py --path=./checkpoints/ImagineGAN/celeba/
 
 ### SliceGAN
 
-Put the ImagineGAN model in the corresponding directory, for example,checkpoints/SliceGAN/celeba/imagine_g.pth. 
+Put the ImagineGAN model in the corresponding directory, for example, checkpoints/SliceGAN/celeba/imagine_g.pth. 
 
 - Training
 
