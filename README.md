@@ -18,8 +18,8 @@ Our paper can be found in https://link.springer.com/chapter/10.1007/978-3-030-58
 
 - Clone this repo:
 ```bash
-git clone https://gitlab.com/Liuhongzhi2018/SpiralNet.git
-cd SpiralNet
+git clone https://github.com/zhenglab/spiralnet.git
+cd spiralnet
 ```
 
 - Install [PyTorch](http://pytorch.org) and 1.0+ and other dependencies (e.g., torchvision).
